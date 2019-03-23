@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyCharm
+.idea/
+
+# C extensions
+*.so
+
+
+# Python build
+build
+dist
+*.egg-info/
+*/_version.py
+
+# Data file
+*.svs
+*.tiff
+*.pvs
+*.png
+*.pickle
+
+# Whitelist for document png file
+!pathfinder/assets/icons/*.png
+!pathfinder/assets/splash/*.png
+!docs/figs/*.png
+# Test cache
+.cache/
+tmp/
+
+# Secret file
+*.secret
+
+
+# mypy
+.mypy_cache/*
+
+# Pytest cache
+.pytest_cache
+
