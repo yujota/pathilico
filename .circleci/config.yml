@@ -31,7 +31,8 @@ jobs:
           name: install dependencies
           command: |
             python3 -m venv venv
-            sudo apt update && sudo apt install python3-opengl xorg-dev
+            sudo apt update && sudo apt install python3-opengl xorg-dev dbus dbux-x11 xorg xinit xterm
+            sudo startx
             . venv/bin/activate
             pip install -r ./python/requirements.txt
             cd ./python && pwd && python setup.py install
