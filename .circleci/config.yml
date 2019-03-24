@@ -31,8 +31,12 @@ jobs:
           name: install dependencies
           command: |
             python3 -m venv venv
+
             . venv/bin/activate
             pip install -r ./python/requirements.txt
+            cd ./python && pwd && python setup.py install
+            # python3 ./python/setup.py bdist_wheel && pip install ./dist/*.whl
+            # cd ./python && python3 -c 'import pathilico'
 
       - save_cache:
           paths:
@@ -48,7 +52,7 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
-            pytest --html=test-reports/result.html
+            cd ./python && pytest --html=test-reports/result.html ./tests/test_app
 
       - store_artifacts:
           path: test-reports
