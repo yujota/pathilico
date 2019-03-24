@@ -34,6 +34,7 @@ jobs:
             . venv/bin/activate
             pip install -r ./python/requirements.txt
             python3 ./python/setup.py bdist_wheel && pip install ./dist/*.whl
+            python3 -c 'import pathilico'
 
       - save_cache:
           paths:
