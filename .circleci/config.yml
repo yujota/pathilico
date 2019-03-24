@@ -31,6 +31,7 @@ jobs:
           name: install dependencies
           command: |
             python3 -m venv venv
+            apt install python3-opengl 
             . venv/bin/activate
             pip install -r ./python/requirements.txt
             cd ./python && pwd && python setup.py install
