@@ -50,7 +50,7 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
-            cd ./python && pytest --html=test-reports/result.html ./python
+            cd ./python && pytest --html=test-reports/result.html .
 
       - store_artifacts:
           path: test-reports
