@@ -17,8 +17,22 @@
 module Main exposing (main)
 
 import Browser
-import Colors exposing (Color, materialColors)
-import Html exposing (Html, a, button, div, input, label, nav, p, span, text)
+import Html
+    exposing
+        ( Html
+        , a
+        , button
+        , div
+        , footer
+        , header
+        , input
+        , label
+        , nav
+        , p
+        , section
+        , span
+        , text
+        )
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 
@@ -28,11 +42,19 @@ bulmaCssLink =
 
 
 type alias AnnotationCategory =
-    String
+    { name : String, uuid : String, color : Color }
+
+
+type alias WorkInProgressAnnotationCategory =
+    { name : FieldString, color : Color }
 
 
 type alias Color =
-    { r : Int, g : Int, b : Int, a : Int }
+    { r : Int, g : Int, b : Int, name : String }
+
+
+colors =
+    [ Color 250 104 0 "Orange", Color 106 0 255 "Indigo" ]
 
 
 type FieldString
@@ -44,21 +66,30 @@ type FieldString
 type alias Model =
     { projectName : FieldString
     , categories : List AnnotationCategory
+    , wipCategory : WorkInProgressAnnotationCategory
     , isColorSelectModalOpen : Bool
     }
+
+
+getUnusedColor : Color
+getUnusedColor =
+    { r = 250, g = 104, b = 0, name = "Orange" }
 
 
 initModel : Model
 initModel =
     { projectName = Unfilled
     , categories = []
+    , wipCategory = { name = Unfilled, color = getUnusedColor }
     , isColorSelectModalOpen = True
     }
 
 
 type Msg
     = UpdateProjectName String
+    | ColorSelected Color
     | SubmitProjectName
+    | SubmitAnnotationCategory
     | OpenColorSelectModal
     | CloseColorSelectModal
 
@@ -90,6 +121,12 @@ update msg model =
         OpenColorSelectModal ->
             { model | isColorSelectModalOpen = True }
 
+        SubmitAnnotationCategory ->
+            model
+
+        ColorSelected color ->
+            model
+
 
 isValidProjectName : FieldString -> Bool
 isValidProjectName nameField =
@@ -113,10 +150,10 @@ view model =
     div []
         [ applyStyle
         , navBar
-        , launchModal model
         , div [ class "container" ]
             [ messageBox <| [ projectNameField model ]
-            , messageBox <| [ addCategoryField model ]
+            , addCategoryField model
+            , launchModal model
             ]
         ]
 
@@ -145,25 +182,72 @@ getButtonClass model =
         "button is-static"
 
 
+colorButton : Color -> Html Msg
+colorButton color =
+    let
+        rgb =
+            \c ->
+                "rgb("
+                    ++ String.fromInt color.r
+                    ++ ","
+                    ++ String.fromInt color.g
+                    ++ ","
+                    ++ String.fromInt color.b
+                    ++ ")"
+    in
+    span [ class "button", style "color" <| rgb color ] [ text color.name ]
+
+
+selectableColorList : Html Msg
+selectableColorList =
+    div [ class "buttons" ] <| List.map colorButton colors
+
+
+
+{-
+   [ span [ class "button" ] [ text "One" ]
+   , span [ class "button" ] [ text "Two" ]
+   ]
+-}
+
+
 launchModal : Model -> Html Msg
 launchModal model =
     case model.isColorSelectModalOpen of
         True ->
             div [ class "modal is-active" ]
                 [ div [ class "modal-background" ] []
-                , div
-                    [ class "modal-content" ]
-                    [ selectColor ]
-                , button
-                    [ class "modal-close is-large"
-                    , style "aria-label" "close"
-                    , onClick CloseColorSelectModal
+                , div [ class "modal-card" ]
+                    [ header [ class "modal-card-head" ]
+                        [ p [ class "modal-card-title" ] [ text "Modal title" ]
+                        , button
+                            [ class "delete"
+                            , style "aria-label" "close"
+                            , onClick CloseColorSelectModal
+                            ]
+                            []
+                        ]
+                    , section [ class "modal-card-body" ]
+                        [ text "Hoge"
+                        , selectableColorList
+                        ]
+                    , footer [ class "modal-card-foot" ]
+                        [ button [ class "button is-success" ] [ text "save" ]
+                        , button
+                            [ class "button"
+                            , onClick CloseColorSelectModal
+                            ]
+                            [ text "Cancel" ]
+                        ]
                     ]
-                    []
                 ]
 
         _ ->
             div [] []
+
+
+
+-- TODO: 今日はModalで色の選択ができるように頑張る.
 
 
 selectColor : Html Msg
@@ -204,34 +288,41 @@ projectNameField model =
 
 addCategoryField : Model -> Html Msg
 addCategoryField model =
-    div [ class "field is-grouped" ]
-        [ p [ class "control is-expanded" ]
-            [ input
-                [ class "input"
-                , placeholder "Input category name"
-                , onInput UpdateProjectName
+    case model.projectName of
+        Confiremed string ->
+            messageBox
+                [ div [ class "field is-grouped" ]
+                    [ p [ class "control is-expanded" ]
+                        [ input
+                            [ class "input"
+                            , placeholder "Input category name"
+                            , onInput UpdateProjectName
+                            ]
+                            []
+                        ]
+                    , p
+                        [ class "control"
+                        ]
+                        [ a
+                            [ onClick OpenColorSelectModal
+                            , class <| getButtonClass model
+                            ]
+                            [ text "Color: Magenta" ]
+                        ]
+                    , p
+                        [ class "control"
+                        ]
+                        [ a
+                            [ onClick SubmitProjectName
+                            , class <| getButtonClass model
+                            ]
+                            [ text "Add category" ]
+                        ]
+                    ]
                 ]
-                []
-            ]
-        , p
-            [ class "control"
-            ]
-            [ a
-                [ onClick OpenColorSelectModal
-                , class <| getButtonClass model
-                ]
-                [ text "Color: Magenta" ]
-            ]
-        , p
-            [ class "control"
-            ]
-            [ a
-                [ onClick SubmitProjectName
-                , class <| getButtonClass model
-                ]
-                [ text "Add category" ]
-            ]
-        ]
+
+        _ ->
+            div [] []
 
 
 applyStyle : Html Msg
