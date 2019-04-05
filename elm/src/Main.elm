@@ -21,9 +21,11 @@ import Html
     exposing
         ( Html
         , a
+        , abbr
         , button
         , div
         , footer
+        , h2
         , header
         , input
         , label
@@ -31,7 +33,14 @@ import Html
         , p
         , section
         , span
+        , table
+        , tbody
+        , td
         , text
+        , tfoot
+        , th
+        , thead
+        , tr
         )
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
@@ -45,15 +54,22 @@ type alias AnnotationCategory =
     { name : String, uuid : String, color : Color }
 
 
-type alias WorkInProgressAnnotationCategory =
-    { name : FieldString, color : Color }
-
-
 type alias Color =
     { r : Int, g : Int, b : Int, name : String }
 
 
-colors =
+color2string : Color -> String
+color2string color =
+    "rgb("
+        ++ String.fromInt color.r
+        ++ ","
+        ++ String.fromInt color.g
+        ++ ","
+        ++ String.fromInt color.b
+        ++ ")"
+
+
+materialColors =
     [ Color 250 104 0 "Orange", Color 106 0 255 "Indigo" ]
 
 
@@ -66,30 +82,30 @@ type FieldString
 type alias Model =
     { projectName : FieldString
     , categories : List AnnotationCategory
-    , wipCategory : WorkInProgressAnnotationCategory
+    , wipCategoryName : String
+    , wipCategoryColor : Maybe Color
+    , wipAvailableColors : List Color
     , isColorSelectModalOpen : Bool
     }
-
-
-getUnusedColor : Color
-getUnusedColor =
-    { r = 250, g = 104, b = 0, name = "Orange" }
 
 
 initModel : Model
 initModel =
     { projectName = Unfilled
     , categories = []
-    , wipCategory = { name = Unfilled, color = getUnusedColor }
-    , isColorSelectModalOpen = True
+    , wipCategoryName = ""
+    , wipCategoryColor = List.head materialColors
+    , wipAvailableColors = materialColors
+    , isColorSelectModalOpen = False
     }
 
 
 type Msg
     = UpdateProjectName String
-    | ColorSelected Color
     | SubmitProjectName
-    | SubmitAnnotationCategory
+    | UpdateCategoryName String
+    | UpdateCategoryColor Color
+    | SubmitAnnotationCategory String Color
     | OpenColorSelectModal
     | CloseColorSelectModal
 
@@ -119,237 +135,377 @@ update msg model =
             { model | isColorSelectModalOpen = False }
 
         OpenColorSelectModal ->
-            { model | isColorSelectModalOpen = True }
+            { model
+                | isColorSelectModalOpen = True
+                , wipCategoryColor = Nothing
+            }
 
-        SubmitAnnotationCategory ->
-            model
+        UpdateCategoryName name ->
+            { model | wipCategoryName = name }
 
-        ColorSelected color ->
-            model
+        UpdateCategoryColor color ->
+            { model | wipCategoryColor = Just color }
+
+        SubmitAnnotationCategory name color ->
+            let
+                isNotSelectedColor =
+                    \c ->
+                        if c == color then
+                            False
+
+                        else
+                            True
+
+                availableColors =
+                    List.filter isNotSelectedColor model.wipAvailableColors
+
+                category =
+                    AnnotationCategory name "" color
+            in
+            { model
+                | wipCategoryName = ""
+                , wipCategoryColor = List.head availableColors
+                , wipAvailableColors = availableColors
+                , categories = category :: model.categories
+                , isColorSelectModalOpen = False
+            }
 
 
-isValidProjectName : FieldString -> Bool
-isValidProjectName nameField =
-    case nameField of
-        Unfilled ->
-            False
 
-        Temp string ->
-            if string == "" then
+-- View
+
+
+view : Model -> Html Msg
+view model =
+    let
+        applyStyle =
+            Html.node "link"
+                [ Html.Attributes.rel "stylesheet"
+                , Html.Attributes.href bulmaCssLink
+                ]
+                []
+
+        messageBox hs =
+            div
+                [ class "tile is-ancestor"
+                ]
+                [ div [ class "tile  is-parent" ]
+                    [ div [ class "tile is-child box" ] hs
+                    ]
+                ]
+
+        navBar =
+            nav [ class "navbar is-primary" ]
+                [ div [ class "navbar-brand" ]
+                    [ a [ class "navbar-item" ] [ text "Project Configuration Tool" ] ]
+                ]
+
+        page ls =
+            div []
+                [ applyStyle
+                , navBar
+                , div [ class "container" ]
+                    [ div [ class "tile is-ancestor is-vertical" ] ls
+                    ]
+                ]
+
+        configureProjNameTxt =
+            "Configure annotation catogories for project : "
+    in
+    case model.projectName of
+        Confiremed pName ->
+            let
+                pNameAndCategoryField =
+                    [ div [ class "tile is-parent is-12" ]
+                        [ div [ class "tile is-child box" ]
+                            [ h2 [] [ text (configureProjNameTxt ++ pName) ]
+                            , addCategoryField
+                                model.wipCategoryName
+                                model.wipCategoryColor
+                            ]
+                        ]
+                    ]
+
+                categoryList =
+                    [ div [ class "tile is-parent is-12" ]
+                        [ div [ class "tile is-child box" ]
+                            [ annotationCategoryList model.categories
+                            ]
+                        ]
+                    ]
+
+                pageContent =
+                    if List.isEmpty model.categories then
+                        pNameAndCategoryField
+
+                    else
+                        pNameAndCategoryField ++ categoryList
+
+                pageContentWithModal =
+                    if model.isColorSelectModalOpen then
+                        pageContent
+                            ++ [ colorSelectModal model.wipCategoryName
+                                    model.wipAvailableColors
+                                    model.wipCategoryColor
+                               ]
+
+                    else
+                        pageContent
+            in
+            page pageContentWithModal
+
+        _ ->
+            page
+                [ div [ class "tile is-parent" ]
+                    [ div [ class "tile is-child box" ]
+                        [ text "Enter project name"
+                        , projectNameInputField model.projectName
+                        ]
+                    ]
+                ]
+
+
+colorSelectModal : String -> List Color -> Maybe Color -> Html Msg
+colorSelectModal categoryName availableColors selectedColor =
+    let
+        modalHeader =
+            header [ class "modal-card-head" ]
+                [ p
+                    [ class "modal-card-title"
+                    ]
+                    [ text <| "Select color for:" ++ categoryName ]
+                , button
+                    [ class "delete"
+                    , style "aria-label" "close"
+                    , onClick CloseColorSelectModal
+                    ]
+                    []
+                ]
+
+        footerOkButtonAttr =
+            case selectedColor of
+                Just c ->
+                    [ class "button is-success"
+                    , onClick <|
+                        SubmitAnnotationCategory categoryName c
+                    ]
+
+                Nothing ->
+                    [ class "button is-static" ]
+
+        modalFooter =
+            footer [ class "modal-card-foot" ]
+                [ button footerOkButtonAttr [ text "OK" ]
+                , button
+                    [ class "button", onClick CloseColorSelectModal ]
+                    [ text "Cancel" ]
+                ]
+
+        colorButton c =
+            let
+                buttonStyle =
+                    case selectedColor of
+                        Just sc ->
+                            if c == sc then
+                                [ style "background-color" (color2string c)
+                                , style "color" "white"
+                                ]
+
+                            else
+                                [ style "color" (color2string c) ]
+
+                        Nothing ->
+                            [ style "color" (color2string c) ]
+            in
+            span
+                ([ class "button", onClick (UpdateCategoryColor c) ]
+                    ++ buttonStyle
+                )
+                [ text c.name ]
+
+        selectableColorList =
+            if List.isEmpty availableColors then
+                text "No available color found"
+
+            else
+                div [ class "buttons" ] <| List.map colorButton availableColors
+
+        modalContent =
+            section [ class "modal-card-body" ] [ selectableColorList ]
+    in
+    div [ class "modal is-active" ]
+        [ div [ class "modal-background" ] []
+        , div [ class "modal-card" ]
+            [ modalHeader
+            , modalContent
+            , modalFooter
+            ]
+        ]
+
+
+projectNameInputField : FieldString -> Html Msg
+projectNameInputField projectNameField =
+    let
+        isValidProjectName nameField =
+            case nameField of
+                Unfilled ->
+                    False
+
+                Temp string ->
+                    if string == "" then
+                        False
+
+                    else
+                        True
+
+                Confiremed string ->
+                    True
+
+        name =
+            case projectNameField of
+                Unfilled ->
+                    ""
+
+                Temp string ->
+                    string
+
+                Confiremed string ->
+                    string
+
+        submitButtonAttr =
+            if isValidProjectName projectNameField then
+                [ class "button is-info", onClick SubmitProjectName ]
+
+            else
+                [ class "button is-static" ]
+    in
+    div [ class "field is-grouped" ]
+        [ p [ class "control is-expanded" ]
+            [ input
+                [ class "input"
+                , placeholder "Input project name"
+                , value name
+                , onInput UpdateProjectName
+                ]
+                []
+            ]
+        , p
+            [ class "control" ]
+            [ a submitButtonAttr [ text "Go Next" ] ]
+        ]
+
+
+addCategoryField : String -> Maybe Color -> Html Msg
+addCategoryField categoryName maybeColor =
+    let
+        _ =
+            Debug.log categoryName
+
+        _ =
+            Debug.toString selectColorButton
+
+        isValidCategoryName name =
+            if name == "" then
                 False
 
             else
                 True
 
-        Confiremed string ->
-            True
+        selectColorButton =
+            if not (isValidCategoryName categoryName) then
+                a [ class "button is-static" ] [ text "---" ]
 
-
-view : Model -> Html Msg
-view model =
-    div []
-        [ applyStyle
-        , navBar
-        , div [ class "container" ]
-            [ messageBox <| [ projectNameField model ]
-            , addCategoryField model
-            , launchModal model
-            ]
-        ]
-
-
-projectNameFieldOld : Model -> Html Msg
-projectNameFieldOld model =
-    div []
-        [ input
-            [ placeholder "Input project name", onInput UpdateProjectName ]
-            []
-        , button
-            [ onClick SubmitProjectName
-            , disabled <| not <| isValidProjectName model.projectName
-            ]
-            [ text "submit" ]
-        , p [ style "background-color" "red" ] [ text "hoge" ]
-        ]
-
-
-getButtonClass : Model -> String
-getButtonClass model =
-    if isValidProjectName model.projectName then
-        "button is-info"
-
-    else
-        "button is-static"
-
-
-colorButton : Color -> Html Msg
-colorButton color =
-    let
-        rgb =
-            \c ->
-                "rgb("
-                    ++ String.fromInt color.r
-                    ++ ","
-                    ++ String.fromInt color.g
-                    ++ ","
-                    ++ String.fromInt color.b
-                    ++ ")"
-    in
-    span [ class "button", style "color" <| rgb color ] [ text color.name ]
-
-
-selectableColorList : Html Msg
-selectableColorList =
-    div [ class "buttons" ] <| List.map colorButton colors
-
-
-
-{-
-   [ span [ class "button" ] [ text "One" ]
-   , span [ class "button" ] [ text "Two" ]
-   ]
--}
-
-
-launchModal : Model -> Html Msg
-launchModal model =
-    case model.isColorSelectModalOpen of
-        True ->
-            div [ class "modal is-active" ]
-                [ div [ class "modal-background" ] []
-                , div [ class "modal-card" ]
-                    [ header [ class "modal-card-head" ]
-                        [ p [ class "modal-card-title" ] [ text "Modal title" ]
-                        , button
-                            [ class "delete"
-                            , style "aria-label" "close"
-                            , onClick CloseColorSelectModal
-                            ]
-                            []
-                        ]
-                    , section [ class "modal-card-body" ]
-                        [ text "Hoge"
-                        , selectableColorList
-                        ]
-                    , footer [ class "modal-card-foot" ]
-                        [ button [ class "button is-success" ] [ text "save" ]
-                        , button
+            else
+                case maybeColor of
+                    Just color ->
+                        a
                             [ class "button"
-                            , onClick CloseColorSelectModal
+                            , style "background-color" (color2string color)
+                            , style "color" "white"
+                            , onClick OpenColorSelectModal
                             ]
-                            [ text "Cancel" ]
-                        ]
-                    ]
-                ]
+                            [ text <| "Color: " ++ color.name ]
 
-        _ ->
-            div [] []
+                    Nothing ->
+                        a [ class "button", onClick OpenColorSelectModal ]
+                            [ text "Select color" ]
 
-
-
--- TODO: 今日はModalで色の選択ができるように頑張る.
-
-
-selectColor : Html Msg
-selectColor =
-    div [ class "field" ]
-        [ label [ class "label" ] [ text "Label" ]
-        , div [ class "control" ] [ input [] [] ]
-        ]
-
-
-projectNameField : Model -> Html Msg
-projectNameField model =
-    case model.projectName of
-        Confiremed string ->
-            text <| "Project Name: " ++ string
-
-        _ ->
-            div [ class "field is-grouped" ]
-                [ p [ class "control is-expanded" ]
-                    [ input
-                        [ class "input"
-                        , placeholder "Input project name"
-                        , onInput UpdateProjectName
-                        ]
-                        []
-                    ]
-                , p
-                    [ class "control"
-                    ]
-                    [ a
-                        [ onClick SubmitProjectName
-                        , class <| getButtonClass model
-                        ]
-                        [ text "Go Next" ]
-                    ]
-                ]
-
-
-addCategoryField : Model -> Html Msg
-addCategoryField model =
-    case model.projectName of
-        Confiremed string ->
-            messageBox
-                [ div [ class "field is-grouped" ]
-                    [ p [ class "control is-expanded" ]
-                        [ input
-                            [ class "input"
-                            , placeholder "Input category name"
-                            , onInput UpdateProjectName
-                            ]
-                            []
-                        ]
-                    , p
-                        [ class "control"
-                        ]
-                        [ a
-                            [ onClick OpenColorSelectModal
-                            , class <| getButtonClass model
-                            ]
-                            [ text "Color: Magenta" ]
-                        ]
-                    , p
-                        [ class "control"
-                        ]
-                        [ a
-                            [ onClick SubmitProjectName
-                            , class <| getButtonClass model
+        submitCategoryButton =
+            case maybeColor of
+                Just c ->
+                    if isValidCategoryName categoryName then
+                        a
+                            [ class "button is-info"
+                            , onClick <|
+                                SubmitAnnotationCategory categoryName c
                             ]
                             [ text "Add category" ]
+
+                    else
+                        a [ class "button is-static" ] [ text "Add category" ]
+
+                Nothing ->
+                    a [ class "button is-static" ] [ text "Add category" ]
+    in
+    div [ class "field is-grouped" ]
+        [ p [ class "control is-expanded" ]
+            [ input
+                [ class "input"
+                , placeholder "Input category name"
+                , onInput UpdateCategoryName
+                , value categoryName
+                ]
+                []
+            ]
+        , p [ class "control" ] [ selectColorButton ]
+        , p [ class "control" ] [ submitCategoryButton ]
+        ]
+
+
+annotationCategoryList : List AnnotationCategory -> Html Msg
+annotationCategoryList categories =
+    let
+        header =
+            thead []
+                [ tr []
+                    [ th [] [ abbr [ title "ID" ] [ text "ID" ] ]
+                    , th []
+                        [ abbr [ title "Category" ]
+                            [ text "Annotation Category" ]
+                        ]
+                    , th []
+                        [ abbr [ title "Color" ]
+                            [ text "Annotation Color" ]
                         ]
                     ]
                 ]
 
-        _ ->
-            div [] []
+        footer =
+            tfoot []
+                [ tr []
+                    [ th [] [ abbr [ title "ID" ] [ text "ID" ] ]
+                    , th []
+                        [ abbr [ title "Category" ]
+                            [ text "Annotation Category" ]
+                        ]
+                    , th []
+                        [ abbr [ title "Color" ]
+                            [ text "Annotation Color" ]
+                        ]
+                    ]
+                ]
 
-
-applyStyle : Html Msg
-applyStyle =
-    Html.node "link"
-        [ Html.Attributes.rel "stylesheet"
-        , Html.Attributes.href bulmaCssLink
-        ]
-        []
-
-
-messageBox : List (Html Msg) -> Html Msg
-messageBox hs =
-    div
-        [ class "tile is-ancestor"
-        ]
-        [ div [ class "tile  is-parent" ]
-            [ div [ class "tile is-child box" ] hs
-            ]
-        ]
-
-
-navBar : Html msg
-navBar =
-    nav [ class "navbar is-primary" ]
-        [ div [ class "navbar-brand" ]
-            [ a [ class "navbar-item" ] [ text "Project Configuration Tool" ] ]
+        row category =
+            tr []
+                [ th [] [ text category.uuid ]
+                , td [] [ text category.name ]
+                , td [] [ text <| color2string category.color ]
+                ]
+    in
+    table [ class "table is-fullwidth is-hoverable" ]
+        [ header
+        , tbody [] <| List.map row categories
+        , footer
         ]
 
 
