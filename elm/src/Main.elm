@@ -14,7 +14,7 @@
 --  limitations under the License.
 
 
-module Main exposing (main)
+module Main exposing (AnnotationCategory, Color, encodeAnnotationCategory2Json, main)
 
 import Browser
 import Html
@@ -44,6 +44,9 @@ import Html
         )
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
+import Json.Encode
+import Random
+import Uuid
 
 
 bulmaCssLink =
@@ -51,7 +54,21 @@ bulmaCssLink =
 
 
 type alias AnnotationCategory =
-    { name : String, uuid : String, color : Color }
+    { name : String, uuid : Uuid.Uuid, color : Color }
+
+
+encodeAnnotationCategory2Json : AnnotationCategory -> Json.Encode.Value
+encodeAnnotationCategory2Json annotationCategory =
+    Json.Encode.object
+        [ ( "uuid", Uuid.encode annotationCategory.uuid )
+        , ( "name", Json.Encode.string annotationCategory.name )
+        ]
+
+
+encodeCategories2Json : List AnnotationCategory -> Json.Encode.Value
+encodeCategories2Json v =
+    Json.Encode.object
+        [ ( "categories", Json.Encode.list encodeAnnotationCategory2Json v ) ]
 
 
 type alias Color =
@@ -100,51 +117,75 @@ initModel =
     }
 
 
+init : () -> ( Model, Cmd Msg )
+init _ =
+    ( initModel, Cmd.none )
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.none
+
+
+
+-- Update
+
+
 type Msg
     = UpdateProjectName String
     | SubmitProjectName
     | UpdateCategoryName String
     | UpdateCategoryColor Color
     | SubmitAnnotationCategory String Color
+    | AddAnnotationCategory String Color Uuid.Uuid
     | OpenColorSelectModal
     | CloseColorSelectModal
 
 
-update : Msg -> Model -> Model
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         UpdateProjectName name ->
-            { model | projectName = Temp name }
+            ( { model | projectName = Temp name }, Cmd.none )
 
         SubmitProjectName ->
             case model.projectName of
                 Unfilled ->
-                    model
+                    ( model, Cmd.none )
 
                 Temp string ->
                     if string == "" then
-                        model
+                        ( model, Cmd.none )
 
                     else
-                        { model | projectName = Confiremed string }
+                        ( { model | projectName = Confiremed string }, Cmd.none )
 
                 Confiremed string ->
-                    model
+                    ( model, Cmd.none )
 
         CloseColorSelectModal ->
-            { model | isColorSelectModalOpen = False }
+            ( { model | isColorSelectModalOpen = False }, Cmd.none )
 
         OpenColorSelectModal ->
-            { model
+            ( { model
                 | isColorSelectModalOpen = True
                 , wipCategoryColor = Nothing
-            }
+              }
+            , Cmd.none
+            )
 
         UpdateCategoryName name ->
-            { model | wipCategoryName = name }
+            ( { model | wipCategoryName = name }, Cmd.none )
 
         UpdateCategoryColor color ->
-            { model | wipCategoryColor = Just color }
+            ( { model | wipCategoryColor = Just color }, Cmd.none )
+
+        AddAnnotationCategory name color id ->
+            let
+                category =
+                    AnnotationCategory name id color
+            in
+            ( { model | categories = category :: model.categories }, Cmd.none )
 
         SubmitAnnotationCategory name color ->
             let
@@ -159,16 +200,17 @@ update msg model =
                 availableColors =
                     List.filter isNotSelectedColor model.wipAvailableColors
 
-                category =
-                    AnnotationCategory name "" color
+                m =
+                    AddAnnotationCategory name color
             in
-            { model
+            ( { model
                 | wipCategoryName = ""
                 , wipCategoryColor = List.head availableColors
                 , wipAvailableColors = availableColors
-                , categories = category :: model.categories
                 , isColorSelectModalOpen = False
-            }
+              }
+            , Random.generate m Uuid.uuidGenerator
+            )
 
 
 
@@ -398,12 +440,6 @@ projectNameInputField projectNameField =
 addCategoryField : String -> Maybe Color -> Html Msg
 addCategoryField categoryName maybeColor =
     let
-        _ =
-            Debug.log categoryName
-
-        _ =
-            Debug.toString selectColorButton
-
         isValidCategoryName name =
             if name == "" then
                 False
@@ -497,7 +533,7 @@ annotationCategoryList categories =
 
         row category =
             tr []
-                [ th [] [ text category.uuid ]
+                [ th [] [ text (Uuid.toString category.uuid) ]
                 , td [] [ text category.name ]
                 , td [] [ text <| color2string category.color ]
                 ]
@@ -510,4 +546,9 @@ annotationCategoryList categories =
 
 
 main =
-    Browser.sandbox { init = initModel, update = update, view = view }
+    Browser.element
+        { init = init
+        , update = update
+        , view = view
+        , subscriptions = subscriptions
+        }
