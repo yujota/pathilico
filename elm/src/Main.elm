@@ -14,9 +14,10 @@
 --  limitations under the License.
 
 
-module Main exposing (AnnotationCategory, Color, encodeAnnotationCategory2Json, main)
+module Main exposing (main)
 
 import Browser
+import File.Download
 import Html
     exposing
         ( Html
@@ -27,6 +28,7 @@ import Html
         , footer
         , h2
         , header
+        , i
         , input
         , label
         , nav
@@ -53,8 +55,16 @@ bulmaCssLink =
     "https://cdnjs.cloudflare.com/ajax/libs/bulma/0.7.4/css/bulma.css"
 
 
+fontAwesomeLink =
+    "https://use.fontawesome.com/releases/v5.8.1/css/all.css"
+
+
 type alias AnnotationCategory =
     { name : String, uuid : Uuid.Uuid, color : Color }
+
+
+jsonVersion =
+    "1.0"
 
 
 encodeAnnotationCategory2Json : AnnotationCategory -> Json.Encode.Value
@@ -65,10 +75,18 @@ encodeAnnotationCategory2Json annotationCategory =
         ]
 
 
-encodeCategories2Json : List AnnotationCategory -> Json.Encode.Value
-encodeCategories2Json v =
+encodeCategories2Json :
+    String
+    -> Uuid.Uuid
+    -> List AnnotationCategory
+    -> Json.Encode.Value
+encodeCategories2Json projectName id v =
     Json.Encode.object
-        [ ( "categories", Json.Encode.list encodeAnnotationCategory2Json v ) ]
+        [ ( "categories", Json.Encode.list encodeAnnotationCategory2Json v )
+        , ( "version", Json.Encode.string jsonVersion )
+        , ( "projectName", Json.Encode.string projectName )
+        , ( "projectId", Uuid.encode id )
+        ]
 
 
 type alias Color =
@@ -87,7 +105,27 @@ color2string color =
 
 
 materialColors =
-    [ Color 250 104 0 "Orange", Color 106 0 255 "Indigo" ]
+    [ Color 250 104 0 "Orange"
+    , Color 240 163 10 "Amber"
+    , Color 227 200 0 "Yellow"
+    , Color 130 90 44 "Brown"
+    , Color 109 135 100 "Olive"
+    , Color 100 118 135 "Steel"
+    , Color 118 96 138 "Mauve"
+    , Color 160 82 45 "Sienna"
+    , Color 164 196 0 "Lime"
+    , Color 96 169 23 "Green"
+    , Color 0 138 0 "Emerald"
+    , Color 0 171 169 "Teal"
+    , Color 27 161 226 "Cyan"
+    , Color 0 80 239 "Cobalt"
+    , Color 106 0 255 "Indigo"
+    , Color 170 0 255 "Violet"
+    , Color 244 114 208 "Pink"
+    , Color 216 0 115 "Magenta"
+    , Color 162 0 37 "Crimson"
+    , Color 229 20 0 "Red"
+    ]
 
 
 type FieldString
@@ -98,9 +136,11 @@ type FieldString
 
 type alias Model =
     { projectName : FieldString
+    , projectId : Maybe Uuid.Uuid
     , categories : List AnnotationCategory
     , wipCategoryName : String
     , wipCategoryColor : Maybe Color
+    , wipCategoryId : Maybe Uuid.Uuid
     , wipAvailableColors : List Color
     , isColorSelectModalOpen : Bool
     }
@@ -109,9 +149,11 @@ type alias Model =
 initModel : Model
 initModel =
     { projectName = Unfilled
+    , projectId = Nothing
     , categories = []
     , wipCategoryName = ""
     , wipCategoryColor = List.head materialColors
+    , wipCategoryId = Nothing
     , wipAvailableColors = materialColors
     , isColorSelectModalOpen = False
     }
@@ -135,11 +177,14 @@ type Msg
     = UpdateProjectName String
     | SubmitProjectName
     | UpdateCategoryName String
-    | UpdateCategoryColor Color
+    | UpdateCategoryColor (Maybe Uuid.Uuid) Color
     | SubmitAnnotationCategory String Color
     | AddAnnotationCategory String Color Uuid.Uuid
-    | OpenColorSelectModal
+    | DeleteAnnotationCategory Uuid.Uuid
+    | OpenColorSelectModal (Maybe Uuid.Uuid) (Maybe Color)
     | CloseColorSelectModal
+    | DownloadConfig
+    | UpdateProjectId Uuid.Uuid
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -147,6 +192,9 @@ update msg model =
     case msg of
         UpdateProjectName name ->
             ( { model | projectName = Temp name }, Cmd.none )
+
+        UpdateProjectId id ->
+            ( { model | projectId = Just id }, Cmd.none )
 
         SubmitProjectName ->
             case model.projectName of
@@ -158,7 +206,9 @@ update msg model =
                         ( model, Cmd.none )
 
                     else
-                        ( { model | projectName = Confiremed string }, Cmd.none )
+                        ( { model | projectName = Confiremed string }
+                        , Cmd.none
+                        )
 
                 Confiremed string ->
                     ( model, Cmd.none )
@@ -166,10 +216,11 @@ update msg model =
         CloseColorSelectModal ->
             ( { model | isColorSelectModalOpen = False }, Cmd.none )
 
-        OpenColorSelectModal ->
+        OpenColorSelectModal maybeId maybeColor ->
             ( { model
                 | isColorSelectModalOpen = True
-                , wipCategoryColor = Nothing
+                , wipCategoryColor = maybeColor
+                , wipCategoryId = maybeId
               }
             , Cmd.none
             )
@@ -177,15 +228,81 @@ update msg model =
         UpdateCategoryName name ->
             ( { model | wipCategoryName = name }, Cmd.none )
 
-        UpdateCategoryColor color ->
-            ( { model | wipCategoryColor = Just color }, Cmd.none )
+        UpdateCategoryColor maybeId color ->
+            case maybeId of
+                Just uuid ->
+                    ( model, Cmd.none )
+
+                Nothing ->
+                    ( { model | wipCategoryColor = Just color }, Cmd.none )
+
+        DeleteAnnotationCategory uuid ->
+            let
+                isSelectedCategory c =
+                    if c.uuid == uuid then
+                        True
+
+                    else
+                        False
+
+                getC2Delete =
+                    List.head <|
+                        List.filter isSelectedCategory model.categories
+            in
+            case getC2Delete of
+                Just category ->
+                    ( { model
+                        | categories =
+                            List.filter
+                                (not << isSelectedCategory)
+                                model.categories
+                        , wipAvailableColors =
+                            category.color :: model.wipAvailableColors
+                      }
+                    , Random.generate UpdateProjectId Uuid.uuidGenerator
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         AddAnnotationCategory name color id ->
             let
                 category =
                     AnnotationCategory name id color
             in
-            ( { model | categories = category :: model.categories }, Cmd.none )
+            ( { model
+                | categories = category :: model.categories
+                , projectId = Nothing
+              }
+            , Random.generate UpdateProjectId Uuid.uuidGenerator
+            )
+
+        DownloadConfig ->
+            case model.projectId of
+                Just uuidUuid ->
+                    case model.projectName of
+                        Confiremed pName ->
+                            let
+                                jsonString =
+                                    Json.Encode.encode 0 <|
+                                        encodeCategories2Json
+                                            pName
+                                            uuidUuid
+                                            model.categories
+
+                                downloadCmd =
+                                    File.Download.string
+                                        "config.json"
+                                        "application/json"
+                                        jsonString
+                            in
+                            ( model, downloadCmd )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         SubmitAnnotationCategory name color ->
             let
@@ -227,6 +344,13 @@ view model =
                 ]
                 []
 
+        applyFontStyle =
+            Html.node "link"
+                [ Html.Attributes.rel "stylesheet"
+                , Html.Attributes.href fontAwesomeLink
+                ]
+                []
+
         messageBox hs =
             div
                 [ class "tile is-ancestor"
@@ -239,12 +363,15 @@ view model =
         navBar =
             nav [ class "navbar is-primary" ]
                 [ div [ class "navbar-brand" ]
-                    [ a [ class "navbar-item" ] [ text "Project Configuration Tool" ] ]
+                    [ a [ class "navbar-item" ]
+                        [ text "Project Configuration Tool" ]
+                    ]
                 ]
 
         page ls =
             div []
                 [ applyStyle
+                , applyFontStyle
                 , navBar
                 , div [ class "container" ]
                     [ div [ class "tile is-ancestor is-vertical" ] ls
@@ -257,6 +384,13 @@ view model =
     case model.projectName of
         Confiremed pName ->
             let
+                downloadable =
+                    if List.length model.categories > 1 then
+                        True
+
+                    else
+                        False
+
                 pNameAndCategoryField =
                     [ div [ class "tile is-parent is-12" ]
                         [ div [ class "tile is-child box" ]
@@ -264,6 +398,7 @@ view model =
                             , addCategoryField
                                 model.wipCategoryName
                                 model.wipCategoryColor
+                            , downloadConfigButton downloadable
                             ]
                         ]
                     ]
@@ -286,7 +421,8 @@ view model =
                 pageContentWithModal =
                     if model.isColorSelectModalOpen then
                         pageContent
-                            ++ [ colorSelectModal model.wipCategoryName
+                            ++ [ colorSelectModal model.wipCategoryId
+                                    model.wipCategoryName
                                     model.wipAvailableColors
                                     model.wipCategoryColor
                                ]
@@ -307,8 +443,8 @@ view model =
                 ]
 
 
-colorSelectModal : String -> List Color -> Maybe Color -> Html Msg
-colorSelectModal categoryName availableColors selectedColor =
+colorSelectModal : Maybe Uuid.Uuid -> String -> List Color -> Maybe Color -> Html Msg
+colorSelectModal maybeId categoryName availableColors selectedColor =
     let
         modalHeader =
             header [ class "modal-card-head" ]
@@ -360,7 +496,7 @@ colorSelectModal categoryName availableColors selectedColor =
                             [ style "color" (color2string c) ]
             in
             span
-                ([ class "button", onClick (UpdateCategoryColor c) ]
+                ([ class "button", onClick (UpdateCategoryColor maybeId c) ]
                     ++ buttonStyle
                 )
                 [ text c.name ]
@@ -458,12 +594,16 @@ addCategoryField categoryName maybeColor =
                             [ class "button"
                             , style "background-color" (color2string color)
                             , style "color" "white"
-                            , onClick OpenColorSelectModal
+                            , onClick (OpenColorSelectModal Nothing maybeColor)
                             ]
                             [ text <| "Color: " ++ color.name ]
 
                     Nothing ->
-                        a [ class "button", onClick OpenColorSelectModal ]
+                        a
+                            [ class "button"
+                            , onClick
+                                (OpenColorSelectModal Nothing maybeColor)
+                            ]
                             [ text "Select color" ]
 
         submitCategoryButton =
@@ -513,6 +653,7 @@ annotationCategoryList categories =
                         [ abbr [ title "Color" ]
                             [ text "Annotation Color" ]
                         ]
+                    , th [] []
                     ]
                 ]
 
@@ -528,20 +669,61 @@ annotationCategoryList categories =
                         [ abbr [ title "Color" ]
                             [ text "Annotation Color" ]
                         ]
+                    , th [] []
                     ]
                 ]
+
+        colorButton cat =
+            a
+                [ class "button is-small"
+                , style "background-color" (color2string cat.color)
+                , style "color" "white"
+                , onClick
+                    (OpenColorSelectModal (Just cat.uuid) (Just cat.color))
+                ]
+                [ text <| "Color: " ++ cat.color.name ]
 
         row category =
             tr []
                 [ th [] [ text (Uuid.toString category.uuid) ]
-                , td [] [ text category.name ]
-                , td [] [ text <| color2string category.color ]
+                , td []
+                    [ text category.name
+
+                    --, span [ class "icon" ] [ i [ class "fas fa-wrench" ] [] ]
+                    ]
+                , td [] [ colorButton category ]
+                , td []
+                    [ a
+                        [ class "delete"
+                        , onClick (DeleteAnnotationCategory category.uuid)
+                        ]
+                        []
+                    ]
                 ]
     in
     table [ class "table is-fullwidth is-hoverable" ]
         [ header
         , tbody [] <| List.map row categories
         , footer
+        ]
+
+
+downloadConfigButton : Bool -> Html Msg
+downloadConfigButton downloadable =
+    let
+        buttonAttr =
+            if downloadable then
+                [ class "button is-fullwidth is-success"
+                , onClick DownloadConfig
+                ]
+
+            else
+                [ class "button is-fullwidth is-static" ]
+    in
+    div []
+        [ a
+            buttonAttr
+            [ text "Download config" ]
         ]
 
 
