@@ -55,12 +55,18 @@ boxedContentView model =
             [ class "tile is-ancestor is-vertical"
             , style "margin-top" "1.5em"
             ]
-            [ inputProjectNameFieldView model
+            [ createOrUploadView model
+            , inputProjectNameFieldView model
             , inputCategoryFieldView model
             , categoryListView model
             , downloadConfigView model
             ]
         ]
+
+
+createOrUploadView : Model -> Html Msg
+createOrUploadView model =
+    div [] []
 
 
 inputProjectNameFieldView : Model -> Html Msg
@@ -117,7 +123,9 @@ inputCategoryFieldView model =
                 case maybeColor of
                     Just color ->
                         box
-                            [ inputCategoryField model.tmpWorkingCategoryName color
+                            [ inputCategoryField
+                                model.tmpWorkingCategoryName
+                                color
                             ]
 
                     Nothing ->
@@ -171,9 +179,6 @@ colorSelectModalView model =
             let
                 maybeCategory =
                     Model.getCategoryByUuid uuid model.categories
-
-                _ =
-                    Debug.log "category " maybeCategory
             in
             case maybeCategory of
                 Just category ->
@@ -213,7 +218,12 @@ downloadConfigView model =
 -- Page contents
 
 
-colorSelectModal : String -> List Color -> Maybe Color -> (Color -> Msg) -> Html Msg
+colorSelectModal :
+    String
+    -> List Color
+    -> Maybe Color
+    -> (Color -> Msg)
+    -> Html Msg
 colorSelectModal name colors maybeSelectedColor m =
     let
         totalColors =
@@ -289,10 +299,10 @@ colorSelectModal name colors maybeSelectedColor m =
 
 navBar : Html Msg
 navBar =
-    nav [ class "navbar is-primary" ]
+    nav [ class "navbar is-info" ]
         [ div [ class "navbar-brand" ]
             [ a [ class "navbar-item" ]
-                [ text "Project Configuration Tool" ]
+                [ text "Pathilico - Project Configuration Tool" ]
             ]
         ]
 

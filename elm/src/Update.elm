@@ -18,9 +18,12 @@ module Update exposing (Msg(..), getProjectId, update)
 
 import Color exposing (Color)
 import File.Download
+import Json.Decode
 import Json.Encode
 import Model exposing (AnnotationCategory, ColorSelectModalStatus(..), Model)
 import Random
+import Task
+import Time exposing (Posix)
 import Uuid exposing (Uuid)
 
 
@@ -38,6 +41,7 @@ type Msg
     | DeleteCategory Uuid
     | GetProjectId Uuid
     | DownloadConfig
+    | UpdateTimeStamp Posix
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -53,10 +57,14 @@ update msg model =
                                     model.projectName
                                     uuid
                                     model.categories
+                                    (Maybe.withDefault
+                                        (Time.millisToPosix 0)
+                                        model.timeStamp
+                                    )
 
                         downloadCmd =
                             File.Download.string
-                                "config.json"
+                                (model.projectName ++ "_config.json")
                                 "application/json"
                                 jsonString
                     in
@@ -90,9 +98,6 @@ update msg model =
 
         SubmitWorkingCategory name color ->
             let
-                _ =
-                    Debug.log "Submitted" (List.length model.availableColors)
-
                 m u =
                     UpdateAnnotationCategory u name color
 
@@ -114,9 +119,6 @@ update msg model =
 
         UpdateAnnotationCategory uuid name color ->
             let
-                _ =
-                    Debug.log "added" name
-
                 newCategory =
                     AnnotationCategory name uuid color
 
@@ -130,7 +132,7 @@ update msg model =
                 | categories = updatedCategories
                 , availableColors = updatedAvailableColors
               }
-            , getProjectId
+            , Cmd.batch [ getProjectId, getNowTime ]
             )
 
         OpenColorSelectModalForWorkingCategory ->
@@ -189,7 +191,7 @@ update msg model =
                         | availableColors = aColors
                         , categories = newList
                       }
-                    , getProjectId
+                    , Cmd.batch [ getProjectId, getNowTime ]
                     )
 
                 Nothing ->
@@ -198,10 +200,22 @@ update msg model =
         GetProjectId uuid ->
             ( { model | projectId = Just uuid }, Cmd.none )
 
+        UpdateTimeStamp posixTime ->
+            let
+                _ =
+                    Debug.log "Time" posixTime
+            in
+            ( { model | timeStamp = Just posixTime }, Cmd.none )
+
 
 getProjectId : Cmd Msg
 getProjectId =
     Random.generate GetProjectId Uuid.uuidGenerator
+
+
+getNowTime : Cmd Msg
+getNowTime =
+    Task.perform UpdateTimeStamp Time.now
 
 
 getCategoryByUuid : Uuid -> List AnnotationCategory -> Maybe AnnotationCategory
@@ -209,6 +223,10 @@ getCategoryByUuid uuid categories =
     categories
         |> List.filter (\c -> c.uuid == uuid)
         |> List.head
+
+
+
+-- この関数を純粋に存在するレコードのアップデートと追加のインサートに分ける
 
 
 updateAnnotationCategories :

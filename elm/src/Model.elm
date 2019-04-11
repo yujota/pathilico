@@ -14,11 +14,20 @@
 --  limitations under the License.
 
 
-module Model exposing (AnnotationCategory, AppMode, ColorSelectModalStatus(..), Model, encodeCategories2Json, getCategoryByUuid)
+module Model exposing
+    ( AnnotationCategory
+    , ColorSelectModalStatus(..)
+    , Model
+    , decodeJson2ProjectConfig
+    , encodeCategories2Json
+    , getCategoryByUuid
+    )
 
 import Browser
 import Color exposing (Color)
+import Json.Decode
 import Json.Encode
+import Time exposing (Posix)
 import Uuid exposing (Uuid)
 
 
@@ -35,11 +44,21 @@ type alias Model =
     , tmpExistingCategoryName : String
     , availableColors : List Color
     , mode : AppMode
+    , timeStamp : Maybe Posix
     }
 
 
 type alias AnnotationCategory =
     { name : String, uuid : Uuid, color : Color }
+
+
+type alias ProjectConfig =
+    { name : String
+    , uuid : Uuid
+    , categories : List AnnotationCategory
+    , version : String
+    , timeStamp : Posix
+    }
 
 
 type ColorSelectModalStatus
@@ -55,7 +74,10 @@ type alias AppMode =
     }
 
 
-getCategoryByUuid : Uuid -> List AnnotationCategory -> Maybe AnnotationCategory
+getCategoryByUuid :
+    Uuid
+    -> List AnnotationCategory
+    -> Maybe AnnotationCategory
 getCategoryByUuid uuid categories =
     categories
         |> List.filter (\c -> c.uuid == uuid)
@@ -72,6 +94,16 @@ encodeColor2Json color =
         ]
 
 
+decodeJson2Color : Json.Decode.Decoder Color
+decodeJson2Color =
+    Json.Decode.map4
+        Color
+        (Json.Decode.field "r" Json.Decode.int)
+        (Json.Decode.field "g" Json.Decode.int)
+        (Json.Decode.field "b" Json.Decode.int)
+        (Json.Decode.field "name" Json.Decode.string)
+
+
 encodeAnnotationCategory2Json : AnnotationCategory -> Json.Encode.Value
 encodeAnnotationCategory2Json annotationCategory =
     Json.Encode.object
@@ -81,15 +113,42 @@ encodeAnnotationCategory2Json annotationCategory =
         ]
 
 
+decodeJson2AnnotationCategory : Json.Decode.Decoder AnnotationCategory
+decodeJson2AnnotationCategory =
+    Json.Decode.map3
+        AnnotationCategory
+        (Json.Decode.field "name" Json.Decode.string)
+        (Json.Decode.field "uuid" Uuid.decoder)
+        (Json.Decode.field "color" decodeJson2Color)
+
+
 encodeCategories2Json :
     String
     -> Uuid.Uuid
     -> List AnnotationCategory
+    -> Posix
     -> Json.Encode.Value
-encodeCategories2Json projectName id v =
+encodeCategories2Json projectName id v timeStamp =
     Json.Encode.object
         [ ( "categories", Json.Encode.list encodeAnnotationCategory2Json v )
         , ( "version", Json.Encode.string jsonVersion )
         , ( "projectName", Json.Encode.string projectName )
         , ( "projectId", Uuid.encode id )
+        , ( "timeStampMillis"
+          , (Json.Encode.int << Time.posixToMillis)
+                timeStamp
+          )
         ]
+
+
+decodeJson2ProjectConfig : Json.Decode.Decoder ProjectConfig
+decodeJson2ProjectConfig =
+    Json.Decode.map5
+        ProjectConfig
+        (Json.Decode.field "projectName" Json.Decode.string)
+        (Json.Decode.field "projectId" Uuid.decoder)
+        (Json.Decode.field "categories"
+            (Json.Decode.list decodeJson2AnnotationCategory)
+        )
+        (Json.Decode.field "version" Json.Decode.string)
+        (Json.Decode.field "timeStampMillis" (Json.Decode.map Time.millisToPosix Json.Decode.int))

@@ -62,6 +62,7 @@ init () =
 
             --, modalStatus = Model.OpenForWorkingCategory "hoge"
             }
+      , timeStamp = Nothing
       }
     , Update.getProjectId
     )
